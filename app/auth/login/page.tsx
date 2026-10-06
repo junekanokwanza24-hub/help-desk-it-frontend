@@ -21,11 +21,14 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3006/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      const res = await fetch(
+        "https://help-desk-it-backend-1.onrender.com/auth/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        },
+      );
 
       if (!res.ok) {
         if (res.status === 401) {

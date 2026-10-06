@@ -4,7 +4,7 @@ import AppShell from "@/src/components/appshell";
 import { getCurrentUser, getToken, isAdmin } from "@/src/lib/auth";
 import { useEffect, useState } from "react";
 
-const API_BASE = "http://localhost:3006";
+const API_BASE = "https://help-desk-it-backend-1.onrender.com";
 
 export default function ProfilePage() {
   const user = getCurrentUser();

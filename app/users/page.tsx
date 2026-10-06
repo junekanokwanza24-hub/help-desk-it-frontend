@@ -17,7 +17,7 @@ interface AppUser {
   createdAt: string;
 }
 
-const API_BASE = "http://localhost:3006";
+const API_BASE = "https://help-desk-it-backend-1.onrender.com";
 
 export default function UsersPage() {
   const router = useRouter();

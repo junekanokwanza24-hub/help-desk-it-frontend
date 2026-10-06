@@ -61,7 +61,7 @@ const PRIORITY_STYLE: Record<PriorityType, { text: string; label: string }> = {
   LOW: { text: "#5F5E5A", label: "Low" },
 };
 
-const API_BASE = "http://localhost:3006";
+const API_BASE = "https://help-desk-it-backend-1.onrender.com";
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
 
 export default function CategoriesListPage() {

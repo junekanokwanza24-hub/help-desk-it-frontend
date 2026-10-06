@@ -32,7 +32,7 @@ const navItems = [
   },
 ];
 
-const API_BASE = "http://localhost:3006";
+const API_BASE = "https://help-desk-it-backend-1.onrender.com";
 const POLL_INTERVAL_MS = 30_000;
 
 interface Notification {
