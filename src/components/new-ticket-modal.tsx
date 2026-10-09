@@ -5,10 +5,16 @@ import { Icon } from "@iconify/react";
 import { getCurrentUser, getToken } from "@/src/lib/auth";
 
 type PriorityType = "HIGH" | "MEDIUM" | "LOW";
+type TicketType = "SOFTWARE" | "HARDWARE";
 
 interface Category {
   id: string;
   name: string;
+}
+
+interface Department {
+  id: string;
+  departmentName: string;
 }
 
 interface NewTicketModalProps {
@@ -24,6 +30,13 @@ const PRIORITY_OPTIONS: { value: PriorityType; label: string }[] = [
   { value: "MEDIUM", label: "Medium" },
   { value: "HIGH", label: "High" },
 ];
+
+const TYPE_OPTIONS: { value: TicketType; label: string }[] = [
+  { value: "SOFTWARE", label: "Software" },
+  { value: "HARDWARE", label: "Hardware" },
+];
+
+const FLOORS = ["B1", ...Array.from({ length: 12 }, (_, i) => String(i + 1))];
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -43,6 +56,9 @@ function fileIcon(name: string) {
   return "mdi:file-outline";
 }
 
+const inputStyle = { border: "1px solid #E8E2EE", color: "#1E1522" };
+const labelStyle = { color: "#4A4351" };
+
 export default function NewTicketModal({
   isOpen,
   onClose,
@@ -52,7 +68,9 @@ export default function NewTicketModal({
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [priority, setPriority] = useState<PriorityType>("MEDIUM");
+  const [type, setType] = useState<TicketType>("SOFTWARE");
   const [department, setDepartment] = useState("");
+  const [floor, setFloor] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [reporterName, setReporterName] = useState("");
   const [deviceName, setDeviceName] = useState("");
@@ -60,6 +78,7 @@ export default function NewTicketModal({
   const [dragActive, setDragActive] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -74,21 +93,30 @@ export default function NewTicketModal({
     setDescription("");
     setCategoryId("");
     setPriority("MEDIUM");
+    setType("SOFTWARE");
     setDepartment("");
+    setFloor("");
     setPhoneNumber("");
     setReporterName("");
     setDeviceName("");
     setFiles([]);
     setErrorMsg("");
 
-    fetch(`${API_BASE}/categories`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    })
+    const headers = { Authorization: `Bearer ${getToken()}` };
+
+    fetch(`${API_BASE}/categories`, { headers })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) =>
         setCategories(Array.isArray(data) ? data : (data.items ?? [])),
       )
       .catch(() => setCategories([]));
+
+    fetch(`${API_BASE}/departments`, { headers })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) =>
+        setDepartments(Array.isArray(data) ? data : (data.items ?? [])),
+      )
+      .catch(() => setDepartments([]));
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -134,13 +162,14 @@ export default function NewTicketModal({
       return;
     }
     if (
-      !department.trim() ||
+      !department ||
+      !floor ||
       !phoneNumber.trim() ||
       !reporterName.trim() ||
       !deviceName.trim()
     ) {
       setErrorMsg(
-        "Please fill in department, phone, reporter name, and device name.",
+        "Please fill in department, floor, phone, reporter name, and device name.",
       );
       return;
     }
@@ -159,8 +188,10 @@ export default function NewTicketModal({
           description: description.trim(),
           categoryId,
           priority,
+          type,
           status: "PENDING",
-          department: department.trim(),
+          department,
+          floor,
           phoneNumber: phoneNumber.trim(),
           reporterName: reporterName.trim(),
           deviceName: deviceName.trim(),
@@ -229,7 +260,7 @@ export default function NewTicketModal({
           <div className="mb-4">
             <label
               className="block mb-1.5 text-[13px] font-medium"
-              style={{ color: "#4A4351" }}
+              style={labelStyle}
             >
               Title
             </label>
@@ -238,14 +269,14 @@ export default function NewTicketModal({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Briefly describe the issue"
               className="w-full h-9 px-3 rounded-lg text-[13.5px] outline-none"
-              style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+              style={inputStyle}
             />
           </div>
 
           <div className="mb-4">
             <label
               className="block mb-1.5 text-[13px] font-medium"
-              style={{ color: "#4A4351" }}
+              style={labelStyle}
             >
               Description
             </label>
@@ -255,15 +286,16 @@ export default function NewTicketModal({
               placeholder="Add any relevant details"
               rows={4}
               className="w-full px-3 py-2 rounded-lg text-[13.5px] outline-none resize-none"
-              style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+              style={inputStyle}
             />
           </div>
 
+          {/* Reporter / Extension */}
           <div className="flex gap-3 mb-4">
             <div className="flex-1">
               <label
                 className="block mb-1.5 text-[13px] font-medium"
-                style={{ color: "#4A4351" }}
+                style={labelStyle}
               >
                 Reporter name
               </label>
@@ -272,31 +304,13 @@ export default function NewTicketModal({
                 onChange={(e) => setReporterName(e.target.value)}
                 placeholder="Who's reporting this?"
                 className="w-full h-9 px-3 rounded-lg text-[13.5px] outline-none"
-                style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+                style={inputStyle}
               />
             </div>
             <div className="flex-1">
               <label
                 className="block mb-1.5 text-[13px] font-medium"
-                style={{ color: "#4A4351" }}
-              >
-                Department
-              </label>
-              <input
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                placeholder="e.g. Production"
-                className="w-full h-9 px-3 rounded-lg text-[13.5px] outline-none"
-                style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1">
-              <label
-                className="block mb-1.5 text-[13px] font-medium"
-                style={{ color: "#4A4351" }}
+                style={labelStyle}
               >
                 Extension number
               </label>
@@ -305,13 +319,63 @@ export default function NewTicketModal({
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="e.g. Extension 123"
                 className="w-full h-9 px-3 rounded-lg text-[13.5px] outline-none"
-                style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+                style={inputStyle}
               />
+            </div>
+          </div>
+
+          {/* Department / Floor */}
+          <div className="flex gap-3 mb-4">
+            <div className="flex-[2]">
+              <label
+                className="block mb-1.5 text-[13px] font-medium"
+                style={labelStyle}
+              >
+                Department
+              </label>
+              <select
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="w-full h-9 px-3 rounded-lg text-[13px] outline-none"
+                style={inputStyle}
+              >
+                <option value="">Select department</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.departmentName}>
+                    {d.departmentName}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex-1">
               <label
                 className="block mb-1.5 text-[13px] font-medium"
-                style={{ color: "#4A4351" }}
+                style={labelStyle}
+              >
+                Floor
+              </label>
+              <select
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+                className="w-full h-9 px-3 rounded-lg text-[13px] outline-none"
+                style={inputStyle}
+              >
+                <option value="">Select</option>
+                {FLOORS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Device / Type */}
+          <div className="flex gap-3 mb-4">
+            <div className="flex-1">
+              <label
+                className="block mb-1.5 text-[13px] font-medium"
+                style={labelStyle}
               >
                 Device name (for VNC)
               </label>
@@ -320,16 +384,37 @@ export default function NewTicketModal({
                 onChange={(e) => setDeviceName(e.target.value)}
                 placeholder="e.g. PC-PROD-014"
                 className="w-full h-9 px-3 rounded-lg text-[13.5px] outline-none"
-                style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+                style={inputStyle}
               />
+            </div>
+            <div className="flex-1">
+              <label
+                className="block mb-1.5 text-[13px] font-medium"
+                style={labelStyle}
+              >
+                Type
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as TicketType)}
+                className="w-full h-9 px-3 rounded-lg text-[13px] outline-none"
+                style={inputStyle}
+              >
+                {TYPE_OPTIONS.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
+          {/* Category / Priority */}
           <div className="flex gap-3 mb-4">
             <div className="flex-1">
               <label
                 className="block mb-1.5 text-[13px] font-medium"
-                style={{ color: "#4A4351" }}
+                style={labelStyle}
               >
                 Category
               </label>
@@ -337,7 +422,7 @@ export default function NewTicketModal({
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full h-9 px-3 rounded-lg text-[13px] outline-none"
-                style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+                style={inputStyle}
               >
                 <option value="">Select category</option>
                 {categories.map((c) => (
@@ -351,7 +436,7 @@ export default function NewTicketModal({
             <div className="flex-1">
               <label
                 className="block mb-1.5 text-[13px] font-medium"
-                style={{ color: "#4A4351" }}
+                style={labelStyle}
               >
                 Priority
               </label>
@@ -359,7 +444,7 @@ export default function NewTicketModal({
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as PriorityType)}
                 className="w-full h-9 px-3 rounded-lg text-[13px] outline-none"
-                style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+                style={inputStyle}
               >
                 {PRIORITY_OPTIONS.map((p) => (
                   <option key={p.value} value={p.value}>
@@ -374,7 +459,7 @@ export default function NewTicketModal({
           <div className="mb-2">
             <label
               className="block mb-1.5 text-[13px] font-medium"
-              style={{ color: "#4A4351" }}
+              style={labelStyle}
             >
               Attachments
             </label>

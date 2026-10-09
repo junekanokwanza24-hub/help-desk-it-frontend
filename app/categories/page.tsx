@@ -7,6 +7,7 @@ import { getToken } from "@/src/lib/auth";
 
 type TicketStatus = "PENDING" | "IN_PROGRESS" | "SUCCESS" | "ABORTED";
 type PriorityType = "HIGH" | "MEDIUM" | "LOW";
+type TicketType = "SOFTWARE" | "HARDWARE";
 
 interface Category {
   id: string;
@@ -34,7 +35,9 @@ interface TicketDetail {
   description: string;
   status: TicketStatus;
   priority: PriorityType;
+  type: TicketType;
   department: string | null;
+  floor: string | null;
   phoneNumber: string | null;
   reporterName: string | null;
   deviceName: string | null;
@@ -61,6 +64,11 @@ const PRIORITY_STYLE: Record<PriorityType, { text: string; label: string }> = {
   LOW: { text: "#5F5E5A", label: "Low" },
 };
 
+const TYPE_LABEL: Record<TicketType, string> = {
+  SOFTWARE: "Software",
+  HARDWARE: "Hardware",
+};
+
 const API_BASE = "https://help-desk-it-backend-1.onrender.com";
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
 
@@ -69,6 +77,7 @@ export default function CategoriesListPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [newCategoryModalOpen, setNewCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [activeCategory, setActiveCategory] = useState<Category | null>(null);
 
   const fetchCategories = useCallback(async () => {
@@ -195,13 +204,30 @@ export default function CategoriesListPage() {
                     >
                       {c.ticketCount}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <Icon
-                        icon="mdi:chevron-right"
-                        width={18}
-                        height={18}
-                        color="#9891A0"
-                      />
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingCategory(c);
+                          }}
+                          className="p-1.5 rounded-md hover:bg-[#F3EDF9]"
+                          style={{ color: "#746B7E" }}
+                          aria-label={`Edit ${c.name}`}
+                        >
+                          <Icon
+                            icon="mdi:pencil-outline"
+                            width={16}
+                            height={16}
+                          />
+                        </button>
+                        <Icon
+                          icon="mdi:chevron-right"
+                          width={18}
+                          height={18}
+                          color="#9891A0"
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -211,9 +237,17 @@ export default function CategoriesListPage() {
       </div>
 
       {newCategoryModalOpen && (
-        <NewCategoryModal
+        <CategoryFormModal
           onClose={() => setNewCategoryModalOpen(false)}
-          onCreated={fetchCategories}
+          onSaved={fetchCategories}
+        />
+      )}
+
+      {editingCategory && (
+        <CategoryFormModal
+          category={editingCategory}
+          onClose={() => setEditingCategory(null)}
+          onSaved={fetchCategories}
         />
       )}
 
@@ -227,39 +261,67 @@ export default function CategoriesListPage() {
   );
 }
 
-function NewCategoryModal({
+/** Create when `category` is omitted, edit (rename) when provided. */
+function CategoryFormModal({
+  category,
   onClose,
-  onCreated,
+  onSaved,
 }: {
+  category?: Category;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const [name, setName] = useState("");
+  const isEdit = !!category;
+  const [name, setName] = useState(category?.name ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Name is required.");
+      return;
+    }
+    if (isEdit && trimmed === category.name) {
+      onClose();
+      return;
+    }
+
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/categories`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
+      const res = await fetch(
+        isEdit
+          ? `${API_BASE}/categories/${category.id}`
+          : `${API_BASE}/categories`,
+        {
+          method: isEdit ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({ name: trimmed }),
         },
-        body: JSON.stringify({ name }),
-      });
+      );
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.message || "Failed to create category");
+        throw new Error(
+          body?.message ||
+            (isEdit
+              ? "Failed to update category"
+              : "Failed to create category"),
+        );
       }
-      onCreated();
+      onSaved();
       onClose();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Couldn't create the category.",
+        err instanceof Error
+          ? err.message
+          : isEdit
+            ? "Couldn't update the category."
+            : "Couldn't create the category.",
       );
     } finally {
       setSubmitting(false);
@@ -281,7 +343,7 @@ function NewCategoryModal({
           className="text-[16px] font-medium mb-1"
           style={{ color: "#1E1522" }}
         >
-          New category
+          {isEdit ? "Edit category" : "New category"}
         </h2>
 
         {error && (
@@ -318,7 +380,13 @@ function NewCategoryModal({
             className="flex-1 h-9 rounded-lg text-[13px] font-medium text-white disabled:opacity-50"
             style={{ backgroundColor: "#613189" }}
           >
-            {submitting ? "Creating…" : "Create"}
+            {submitting
+              ? isEdit
+                ? "Saving…"
+                : "Creating…"
+              : isEdit
+                ? "Save"
+                : "Create"}
           </button>
         </div>
       </form>
@@ -577,9 +645,11 @@ function TicketDetailPanel({
 
             <div className="grid grid-cols-2 gap-3">
               <InfoField label="Reported by" value={ticket.reporterName} />
-              <InfoField label="Department" value={ticket.department} />
               <InfoField label="Phone" value={ticket.phoneNumber} />
+              <InfoField label="Department" value={ticket.department} />
+              <InfoField label="Floor" value={ticket.floor} />
               <InfoField label="Device" value={ticket.deviceName} />
+              <InfoField label="Type" value={TYPE_LABEL[ticket.type] ?? null} />
               <InfoField
                 label="Created by"
                 value={`${ticket.createdBy.firstName} ${ticket.createdBy.lastName}`}

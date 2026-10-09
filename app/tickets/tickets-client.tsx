@@ -9,12 +9,14 @@ import { useSearchParams } from "next/navigation";
 
 type TicketStatus = "PENDING" | "IN_PROGRESS" | "SUCCESS" | "ABORTED";
 type PriorityType = "HIGH" | "MEDIUM" | "LOW";
+type TicketType = "SOFTWARE" | "HARDWARE";
 
 interface Ticket {
   id: string;
   title: string;
   status: TicketStatus;
   priority: PriorityType;
+  type: TicketType;
   createdAt: string;
   category: { id: string; name: string };
   createdBy: { id: string; firstName: string; lastName: string };
@@ -38,7 +40,9 @@ interface TicketDetail {
   description: string;
   status: TicketStatus;
   priority: PriorityType;
+  type: TicketType;
   department: string | null;
+  floor: string | null;
   phoneNumber: string | null;
   reporterName: string | null;
   deviceName: string | null;
@@ -65,6 +69,11 @@ const PRIORITY_STYLE: Record<PriorityType, { text: string; label: string }> = {
   LOW: { text: "#5F5E5A", label: "Low" },
 };
 
+const TYPE_LABEL: Record<TicketType, string> = {
+  SOFTWARE: "Software",
+  HARDWARE: "Hardware",
+};
+
 const API_BASE = "https://help-desk-it-backend-1.onrender.com";
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
 
@@ -78,6 +87,7 @@ export default function TicketsListPage() {
   const categoryId = searchParams.get("category");
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
+  const [type, setType] = useState("");
   const [page, setPage] = useState(1);
   const [users, setUsers] = useState<
     { id: string; firstName: string; lastName: string }[]
@@ -93,6 +103,7 @@ export default function TicketsListPage() {
       const params = new URLSearchParams({ page: String(page), limit: "10" });
       if (status) params.set("status", status);
       if (priority) params.set("priority", priority);
+      if (type) params.set("type", type);
       if (categoryId) params.set("category", categoryId);
 
       const res = await fetch(`${API_BASE}/tickets?${params.toString()}`, {
@@ -109,7 +120,7 @@ export default function TicketsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, page, categoryId]);
+  }, [status, priority, type, page, categoryId]);
 
   // fetch users once on mount (for the assign dropdown)
   useEffect(() => {
@@ -244,11 +255,26 @@ export default function TicketsListPage() {
             <option value="LOW">Low</option>
           </select>
 
-          {(status || priority) && (
+          <select
+            value={type}
+            onChange={(e) => {
+              setPage(1);
+              setType(e.target.value);
+            }}
+            className="h-9 px-3 rounded-lg text-[13px] outline-none"
+            style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+          >
+            <option value="">All types</option>
+            <option value="SOFTWARE">Software</option>
+            <option value="HARDWARE">Hardware</option>
+          </select>
+
+          {(status || priority || type) && (
             <button
               onClick={() => {
                 setStatus("");
                 setPriority("");
+                setType("");
                 setPage(1);
               }}
               className="text-[13px] font-medium"
@@ -292,6 +318,7 @@ export default function TicketsListPage() {
                 {[
                   "Ticket",
                   "Category",
+                  "Type",
                   "Priority",
                   "Status",
                   "Assigned to",
@@ -315,7 +342,7 @@ export default function TicketsListPage() {
               {loading && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-10 text-center text-[13.5px]"
                     style={{ color: "#9891A0" }}
                   >
@@ -327,7 +354,7 @@ export default function TicketsListPage() {
               {!loading && tickets.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-10 text-center text-[13.5px]"
                     style={{ color: "#9891A0" }}
                   >
@@ -360,6 +387,12 @@ export default function TicketsListPage() {
                         style={{ color: "#746B7E" }}
                       >
                         {t.category.name}
+                      </td>
+                      <td
+                        className="px-4 py-3 text-[13px]"
+                        style={{ color: "#746B7E" }}
+                      >
+                        {TYPE_LABEL[t.type] ?? "—"}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -577,6 +610,9 @@ function TicketDetailModal({
                 <span className="text-[12px]" style={{ color: "#9891A0" }}>
                   {ticket.category.name}
                 </span>
+                <span className="text-[12px]" style={{ color: "#9891A0" }}>
+                  · {TYPE_LABEL[ticket.type] ?? "—"}
+                </span>
                 <span
                   className="text-[12px] font-medium"
                   style={{ color: PRIORITY_STYLE[ticket.priority].text }}
@@ -608,9 +644,14 @@ function TicketDetailModal({
 
               <div className="grid grid-cols-2 gap-3">
                 <InfoField label="Reported by" value={ticket.reporterName} />
-                <InfoField label="Department" value={ticket.department} />
                 <InfoField label="Phone" value={ticket.phoneNumber} />
+                <InfoField label="Department" value={ticket.department} />
+                <InfoField label="Floor" value={ticket.floor} />
                 <InfoField label="Device" value={ticket.deviceName} />
+                <InfoField
+                  label="Type"
+                  value={TYPE_LABEL[ticket.type] ?? null}
+                />
                 <InfoField
                   label="Created by"
                   value={`${ticket.createdBy.firstName} ${ticket.createdBy.lastName}`}

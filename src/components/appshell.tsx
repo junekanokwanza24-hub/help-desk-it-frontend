@@ -25,6 +25,12 @@ const navItems = [
     adminOnly: true,
   },
   {
+    href: "/departments",
+    label: "Departments",
+    icon: "mdi:shape-outline",
+    adminOnly: true,
+  },
+  {
     href: "/users",
     label: "Users",
     icon: "mdi:account-multiple-outline",
