@@ -13,6 +13,12 @@ import {
 
 const navItems = [
   {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: "mdi:shape-outline",
+    adminOnly: true,
+  },
+  {
     href: "/tickets",
     label: "Tickets",
     icon: "mdi:ticket-outline",
