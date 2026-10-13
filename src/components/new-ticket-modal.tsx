@@ -14,7 +14,7 @@ interface Category {
 
 interface Department {
   id: string;
-  departmentName: string;
+  name: string;
 }
 
 interface NewTicketModalProps {
@@ -54,6 +54,15 @@ function fileIcon(name: string) {
     return "mdi:file-excel-outline";
   if (ext === "zip") return "mdi:folder-zip-outline";
   return "mdi:file-outline";
+}
+
+/** Pull a readable message out of a NestJS error response. */
+async function readErrorMessage(res: Response, fallback: string) {
+  const body = await res.json().catch(() => null);
+  const msg = body?.message;
+  if (Array.isArray(msg)) return msg.join(", ");
+  if (typeof msg === "string" && msg) return msg;
+  return fallback;
 }
 
 const inputStyle = { border: "1px solid #E8E2EE", color: "#1E1522" };
@@ -103,23 +112,32 @@ export default function NewTicketModal({
     setErrorMsg("");
 
     const headers = { Authorization: `Bearer ${getToken()}` };
+    let cancelled = false;
 
     fetch(`${API_BASE}/categories`, { headers })
       .then((res) => (res.ok ? res.json() : []))
-      .then((data) =>
-        setCategories(Array.isArray(data) ? data : (data.items ?? [])),
-      )
-      .catch(() => setCategories([]));
+      .then((data) => {
+        if (!cancelled)
+          setCategories(Array.isArray(data) ? data : (data.items ?? []));
+      })
+      .catch(() => !cancelled && setCategories([]));
 
     fetch(`${API_BASE}/departments`, { headers })
       .then((res) => (res.ok ? res.json() : []))
-      .then((data) =>
-        setDepartments(Array.isArray(data) ? data : (data.items ?? [])),
-      )
-      .catch(() => setDepartments([]));
+      .then((data) => {
+        if (!cancelled)
+          setDepartments(Array.isArray(data) ? data : (data.items ?? []));
+      })
+      .catch(() => !cancelled && setDepartments([]));
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const busy = submitting || uploadingFiles;
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
@@ -130,23 +148,27 @@ export default function NewTicketModal({
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  /** Returns the number of files that failed to upload. */
   const uploadAttachments = async (ticketId: string) => {
-    if (files.length === 0) return;
+    if (files.length === 0) return 0;
     setUploadingFiles(true);
     try {
-      await Promise.all(
-        files.map((file) => {
+      const results = await Promise.allSettled(
+        files.map(async (file) => {
           const formData = new FormData();
           formData.append("file", file);
           formData.append("ticketId", ticketId);
-          formData.append("uploadedById", user?.id ?? "");
-          return fetch(`${API_BASE}/attachments`, {
+          if (user?.id) formData.append("uploadedById", user.id);
+
+          const res = await fetch(`${API_BASE}/attachments`, {
             method: "POST",
             headers: { Authorization: `Bearer ${getToken()}` },
             body: formData,
           });
+          if (!res.ok) throw new Error(file.name);
         }),
       );
+      return results.filter((r) => r.status === "rejected").length;
     } finally {
       setUploadingFiles(false);
     }
@@ -176,6 +198,9 @@ export default function NewTicketModal({
 
     setSubmitting(true);
     setErrorMsg("");
+
+    // 1) create the ticket
+    let ticketId: string;
     try {
       const res = await fetch(`${API_BASE}/tickets`, {
         method: "POST",
@@ -189,7 +214,6 @@ export default function NewTicketModal({
           categoryId,
           priority,
           type,
-          status: "PENDING",
           department,
           floor,
           phoneNumber: phoneNumber.trim(),
@@ -198,27 +222,48 @@ export default function NewTicketModal({
         }),
       });
 
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        throw new Error(
+          await readErrorMessage(res, "Couldn't create the ticket. Try again."),
+        );
+      }
       const ticket = await res.json();
+      ticketId = ticket.id;
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error && err.message
+          ? err.message
+          : "Couldn't create the ticket. Try again.",
+      );
+      setSubmitting(false);
+      return;
+    }
 
-      await uploadAttachments(ticket.id);
-
+    // 2) ticket exists from here on — never show "couldn't create" again,
+    //    otherwise the user retries and ends up with duplicates
+    try {
+      const failed = await uploadAttachments(ticketId);
       onCreated();
+      if (failed > 0) {
+        setFiles([]);
+        setErrorMsg(
+          `Ticket created, but ${failed} file${failed === 1 ? "" : "s"} failed to upload. You can close this window.`,
+        );
+        return;
+      }
       onClose();
-    } catch {
-      setErrorMsg("Couldn't create the ticket. Try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const busy = submitting || uploadingFiles;
+  const ticketCreatedWithErrors = errorMsg.startsWith("Ticket created");
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ backgroundColor: "rgba(30, 21, 34, 0.45)" }}
-      onClick={onClose}
+      onClick={() => !busy && onClose()}
     >
       <div
         className="w-full max-w-lg rounded-xl bg-white shadow-xl"
@@ -231,14 +276,15 @@ export default function NewTicketModal({
           style={{ borderBottom: "1px solid #E8E2EE" }}
         >
           <h2
-            className="flex items-center  gap-2 text-[16px] font-medium"
+            className="flex items-center gap-2 text-[16px] font-medium"
             style={{ color: "#1E1522" }}
           >
             <Icon icon={"gridicons:notice-outline"} /> New ticket
           </h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-md"
+            disabled={busy}
+            className="p-1 rounded-md disabled:opacity-40"
             style={{ color: "#9891A0" }}
             aria-label="Close"
           >
@@ -251,7 +297,11 @@ export default function NewTicketModal({
           {errorMsg && (
             <div
               className="mb-4 px-4 py-3 rounded-lg text-[13px]"
-              style={{ backgroundColor: "#FCEBEB", color: "#A32D2D" }}
+              style={
+                ticketCreatedWithErrors
+                  ? { backgroundColor: "#FDF3E3", color: "#854F0B" }
+                  : { backgroundColor: "#FCEBEB", color: "#A32D2D" }
+              }
             >
               {errorMsg}
             </div>
@@ -341,8 +391,8 @@ export default function NewTicketModal({
               >
                 <option value="">Select department</option>
                 {departments.map((d) => (
-                  <option key={d.id} value={d.departmentName}>
-                    {d.departmentName}
+                  <option key={d.id} value={d.name}>
+                    {d.name}
                   </option>
                 ))}
               </select>
@@ -494,7 +544,10 @@ export default function NewTicketModal({
                 ref={fileInputRef}
                 type="file"
                 multiple
-                onChange={(e) => addFiles(e.target.files)}
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = ""; // allow re-selecting the same file
+                }}
                 className="hidden"
               />
             </div>
@@ -529,7 +582,8 @@ export default function NewTicketModal({
                     </div>
                     <button
                       onClick={() => removeFile(i)}
-                      className="p-1 rounded-md flex-shrink-0"
+                      disabled={busy}
+                      className="p-1 rounded-md flex-shrink-0 disabled:opacity-40"
                       style={{ color: "#9891A0" }}
                       aria-label="Remove file"
                     >
@@ -550,24 +604,26 @@ export default function NewTicketModal({
           <button
             onClick={onClose}
             disabled={busy}
-            className="h-9 px-2 rounded-lg text-[13.5px] font-medium disabled:opacity-40"
+            className="h-9 px-3 rounded-lg text-[13.5px] font-medium disabled:opacity-40"
             style={{ border: "1px solid #E8E2EE", color: "#4A4351" }}
           >
-            Cancel
+            {ticketCreatedWithErrors ? "Close" : "Cancel"}
           </button>
-          <button
-            onClick={handleSubmit}
-            disabled={busy}
-            className="h-9 px-2 flex items-center rounded-lg text-[13.5px] font-medium text-white disabled:opacity-60"
-            style={{ backgroundColor: "#613189" }}
-          >
-            {submitting
-              ? "Creating…"
-              : uploadingFiles
-                ? "Uploading files…"
-                : "Create ticket"}
-            <Icon icon={"bi:plus"} width={25} />
-          </button>
+          {!ticketCreatedWithErrors && (
+            <button
+              onClick={handleSubmit}
+              disabled={busy}
+              className="h-9 pl-3 pr-1.5 flex items-center rounded-lg text-[13.5px] font-medium text-white disabled:opacity-60"
+              style={{ backgroundColor: "#613189" }}
+            >
+              {submitting && !uploadingFiles
+                ? "Creating…"
+                : uploadingFiles
+                  ? "Uploading files…"
+                  : "Create ticket"}
+              <Icon icon={"bi:plus"} width={25} />
+            </button>
+          )}
         </div>
       </div>
     </div>
