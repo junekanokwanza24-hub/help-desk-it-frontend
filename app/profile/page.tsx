@@ -7,11 +7,11 @@ import { useEffect, useState } from "react";
 const API_BASE = "https://help-desk-it-backend-1.onrender.com";
 
 export default function ProfilePage() {
-  const user = getCurrentUser();
+  const [user] = useState(() => getCurrentUser());
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState(user?.firstName ?? "");
+  const [lastName, setLastName] = useState(user?.lastName ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -20,14 +20,6 @@ export default function ProfilePage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (user) {
-      setFirstName(user.firstName);
-      setLastName(user.lastName);
-      setEmail(user.email);
-    }
-  }, [user]);
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,12 +39,37 @@ export default function ProfilePage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ firstName, lastName, email }),
+        body: JSON.stringify({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim(),
+        }),
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        console.error("PATCH /users/me failed:", res.status, body);
+        throw new Error(
+          res.status === 409
+            ? "This email is already in use."
+            : "Couldn't update your profile. Try again.",
+        );
+      }
+
+      const updated = await res.json().catch(() => ({}));
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify({ ...user, firstName, lastName, email, ...updated }),
+      );
+
       setMessage("Profile updated.");
-    } catch {
-      setError("Couldn't update your profile. Try again.");
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Couldn't update your profile. Try again.",
+      );
     } finally {
       setSavingProfile(false);
     }
