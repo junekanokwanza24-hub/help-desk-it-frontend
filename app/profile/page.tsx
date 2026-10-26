@@ -56,14 +56,14 @@ export default function ProfilePage() {
         );
       }
 
-      const updated = await res.json().catch(() => ({}));
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ ...user, firstName, lastName, email, ...updated }),
-      );
+      // backend คืน { user, access_token }
+      const { access_token } = await res.json();
+      if (access_token) {
+        localStorage.setItem("access_token", access_token);
+      }
 
       setMessage("Profile updated.");
+      setTimeout(() => window.location.reload(), 800);
     } catch (err) {
       setError(
         err instanceof Error && err.message
