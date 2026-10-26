@@ -88,6 +88,8 @@ export default function TicketsListPage() {
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [type, setType] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [users, setUsers] = useState<
     { id: string; firstName: string; lastName: string }[]
@@ -104,7 +106,9 @@ export default function TicketsListPage() {
       if (status) params.set("status", status);
       if (priority) params.set("priority", priority);
       if (type) params.set("type", type);
-      if (categoryId) params.set("category", categoryId);
+      if (categoryId) params.set("categoryId", categoryId);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
 
       const res = await fetch(`${API_BASE}/tickets?${params.toString()}`, {
         headers: { Authorization: `Bearer ${getToken()}` },
@@ -120,7 +124,7 @@ export default function TicketsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, type, page, categoryId]);
+  }, [status, priority, type, dateFrom, dateTo, page, categoryId]);
 
   // fetch users once on mount (for the assign dropdown)
   useEffect(() => {
@@ -223,7 +227,7 @@ export default function TicketsListPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
           <select
             value={status}
             onChange={(e) => {
@@ -269,12 +273,56 @@ export default function TicketsListPage() {
             <option value="HARDWARE">Hardware</option>
           </select>
 
-          {(status || priority || type) && (
+          {/* Date range */}
+          <div className="flex items-center gap-2">
+            <label
+              className="text-[12.5px]"
+              style={{ color: "#746B7E" }}
+              htmlFor="dateFrom"
+            >
+              From
+            </label>
+            <input
+              id="dateFrom"
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => {
+                setPage(1);
+                setDateFrom(e.target.value);
+              }}
+              className="h-9 px-3 rounded-lg text-[13px] outline-none"
+              style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+            />
+            <label
+              className="text-[12.5px]"
+              style={{ color: "#746B7E" }}
+              htmlFor="dateTo"
+            >
+              To
+            </label>
+            <input
+              id="dateTo"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => {
+                setPage(1);
+                setDateTo(e.target.value);
+              }}
+              className="h-9 px-3 rounded-lg text-[13px] outline-none"
+              style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+            />
+          </div>
+
+          {(status || priority || type || dateFrom || dateTo) && (
             <button
               onClick={() => {
                 setStatus("");
                 setPriority("");
                 setType("");
+                setDateFrom("");
+                setDateTo("");
                 setPage(1);
               }}
               className="text-[13px] font-medium"
