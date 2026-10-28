@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
+import * as XLSX from "xlsx";
 import AppShell from "@/src/components/appshell";
 import { getCurrentUser, getToken, isAdmin } from "@/src/lib/auth";
 import NewTicketModal from "@/src/components/new-ticket-modal";
@@ -82,6 +83,7 @@ export default function TicketsListPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [meta, setMeta] = useState<TicketsResponse["meta"] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const searchParams = useSearchParams();
   const categoryId = searchParams.get("category");
@@ -98,21 +100,33 @@ export default function TicketsListPage() {
   const currentUser = getCurrentUser();
   const admin = isAdmin(currentUser);
 
-  const fetchTickets = useCallback(async () => {
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: "10" });
+  const buildParams = useCallback(
+    (pageNum: number, limit: number) => {
+      const params = new URLSearchParams({
+        page: String(pageNum),
+        limit: String(limit),
+      });
       if (status) params.set("status", status);
       if (priority) params.set("priority", priority);
       if (type) params.set("type", type);
       if (categoryId) params.set("categoryId", categoryId);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
+      return params;
+    },
+    [status, priority, type, categoryId, dateFrom, dateTo],
+  );
 
-      const res = await fetch(`${API_BASE}/tickets?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
+  const fetchTickets = useCallback(async () => {
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await fetch(
+        `${API_BASE}/tickets?${buildParams(page, 10).toString()}`,
+        {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        },
+      );
 
       if (!res.ok) throw new Error();
 
@@ -124,7 +138,7 @@ export default function TicketsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, priority, type, dateFrom, dateTo, page, categoryId]);
+  }, [buildParams, page]);
 
   // fetch users once on mount (for the assign dropdown)
   useEffect(() => {
@@ -201,6 +215,63 @@ export default function TicketsListPage() {
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // ดึงทุกหน้าตาม filter ปัจจุบัน
+      const all: Ticket[] = [];
+      let p = 1;
+      let totalPages = 1;
+
+      do {
+        const res = await fetch(
+          `${API_BASE}/tickets?${buildParams(p, 100).toString()}`,
+          { headers: { Authorization: `Bearer ${getToken()}` } },
+        );
+        if (!res.ok) throw new Error();
+
+        const data: TicketsResponse = await res.json();
+        all.push(...data.items);
+        totalPages = data.meta.totalPages;
+        p++;
+      } while (p <= totalPages);
+
+      const rows = all.map((t) => ({
+        Ticket: t.title,
+        Category: t.category.name,
+        Type: TYPE_LABEL[t.type] ?? "",
+        Priority: PRIORITY_STYLE[t.priority].label,
+        Status: STATUS_STYLE[t.status].label,
+        "Created by": `${t.createdBy.firstName} ${t.createdBy.lastName}`,
+        "Assigned to": t.assignedTo
+          ? `${t.assignedTo.firstName} ${t.assignedTo.lastName}`
+          : "",
+        Created: new Date(t.createdAt).toLocaleString(),
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [
+        { wch: 40 },
+        { wch: 18 },
+        { wch: 12 },
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 22 },
+        { wch: 22 },
+        { wch: 20 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Tickets");
+
+      const date = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `tickets-${date}.xlsx`);
+    } catch {
+      alert("Couldn't export tickets. Try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <AppShell>
       <div className="px-8 py-8 w-full">
@@ -216,14 +287,27 @@ export default function TicketsListPage() {
               {meta ? `${meta.total} total` : "Loading…"}
             </p>
           </div>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1.5 h-9 px-4 rounded-lg text-[13.5px] font-medium text-white"
-            style={{ backgroundColor: "#613189" }}
-          >
-            <Icon icon="mdi:plus" width={16} height={16} />
-            New ticket
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              disabled={exporting || !meta || meta.total === 0}
+              className="flex items-center gap-1.5 h-9 px-4 rounded-lg text-[13.5px] font-medium disabled:opacity-40"
+              style={{ border: "1px solid #E8E2EE", color: "#4A4351" }}
+            >
+              <Icon icon="mdi:microsoft-excel" width={16} height={16} />
+              {exporting ? "Exporting…" : "Export Excel"}
+            </button>
+
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-1.5 h-9 px-4 rounded-lg text-[13.5px] font-medium text-white"
+              style={{ backgroundColor: "#613189" }}
+            >
+              <Icon icon="mdi:plus" width={16} height={16} />
+              New ticket
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -372,9 +456,9 @@ export default function TicketsListPage() {
                   "Assigned to",
                   "Created",
                   "",
-                ].map((h) => (
+                ].map((h, i) => (
                   <th
-                    key={h}
+                    key={`${h}-${i}`}
                     className="px-4 py-3 text-[12px] font-medium"
                     style={{
                       color: "#9891A0",
