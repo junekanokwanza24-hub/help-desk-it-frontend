@@ -15,6 +15,7 @@ type TicketType = "SOFTWARE" | "HARDWARE";
 interface Ticket {
   id: string;
   title: string;
+  description?: string | null;
   status: TicketStatus;
   priority: PriorityType;
   type: TicketType;
@@ -90,6 +91,7 @@ export default function TicketsListPage() {
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
   const [type, setType] = useState("");
+  const [assignee, setAssignee] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -109,12 +111,13 @@ export default function TicketsListPage() {
       if (status) params.set("status", status);
       if (priority) params.set("priority", priority);
       if (type) params.set("type", type);
+      if (assignee) params.set("assignedToId", assignee);
       if (categoryId) params.set("categoryId", categoryId);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
       return params;
     },
-    [status, priority, type, categoryId, dateFrom, dateTo],
+    [status, priority, type, assignee, categoryId, dateFrom, dateTo],
   );
 
   const fetchTickets = useCallback(async () => {
@@ -140,7 +143,7 @@ export default function TicketsListPage() {
     }
   }, [buildParams, page]);
 
-  // fetch users once on mount (for the assign dropdown)
+  // fetch users once on mount (for the assign dropdown + assignee filter)
   useEffect(() => {
     fetch(`${API_BASE}/users`, {
       headers: { Authorization: `Bearer ${getToken()}` },
@@ -238,6 +241,7 @@ export default function TicketsListPage() {
 
       const rows = all.map((t) => ({
         Ticket: t.title,
+        Description: t.description ?? "",
         Category: t.category.name,
         Type: TYPE_LABEL[t.type] ?? "",
         Priority: PRIORITY_STYLE[t.priority].label,
@@ -251,14 +255,15 @@ export default function TicketsListPage() {
 
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [
-        { wch: 40 },
-        { wch: 18 },
-        { wch: 12 },
-        { wch: 10 },
-        { wch: 12 },
-        { wch: 22 },
-        { wch: 22 },
-        { wch: 20 },
+        { wch: 40 }, // Ticket
+        { wch: 60 }, // Description
+        { wch: 18 }, // Category
+        { wch: 12 }, // Type
+        { wch: 10 }, // Priority
+        { wch: 12 }, // Status
+        { wch: 22 }, // Created by
+        { wch: 22 }, // Assigned to
+        { wch: 20 }, // Created
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Tickets");
@@ -271,6 +276,9 @@ export default function TicketsListPage() {
       setExporting(false);
     }
   };
+
+  const hasFilters =
+    status || priority || type || assignee || dateFrom || dateTo;
 
   return (
     <AppShell>
@@ -357,6 +365,24 @@ export default function TicketsListPage() {
             <option value="HARDWARE">Hardware</option>
           </select>
 
+          {/* Assignee filter */}
+          <select
+            value={assignee}
+            onChange={(e) => {
+              setPage(1);
+              setAssignee(e.target.value);
+            }}
+            className="h-9 px-3 rounded-lg text-[13px] outline-none"
+            style={{ border: "1px solid #E8E2EE", color: "#1E1522" }}
+          >
+            <option value="">All assignees</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.firstName} {u.lastName}
+              </option>
+            ))}
+          </select>
+
           {/* Date range */}
           <div className="flex items-center gap-2">
             <label
@@ -399,12 +425,13 @@ export default function TicketsListPage() {
             />
           </div>
 
-          {(status || priority || type || dateFrom || dateTo) && (
+          {hasFilters && (
             <button
               onClick={() => {
                 setStatus("");
                 setPriority("");
                 setType("");
+                setAssignee("");
                 setDateFrom("");
                 setDateTo("");
                 setPage(1);
