@@ -4,7 +4,19 @@ import { useEffect, useState, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import AppShell from "@/src/components/appshell";
 import { getToken } from "@/src/lib/auth";
-
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
 type TicketStatus = "PENDING" | "IN_PROGRESS" | "SUCCESS" | "ABORTED";
 type PriorityType = "HIGH" | "MEDIUM" | "LOW";
 
@@ -207,16 +219,19 @@ export default function DashboardPage() {
             {/* Breakdowns */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card title="By category">
-                <BarList items={stats.byCategory} empty="No categories yet." />
+                <HBarChart
+                  items={stats.byCategory}
+                  empty="No categories yet."
+                />
               </Card>
               <Card title="Top departments">
-                <BarList
+                <HBarChart
                   items={stats.byDepartment}
                   empty="No department data."
                 />
               </Card>
               <Card title="Open tickets by priority">
-                <BarList
+                <DonutChart
                   items={(["HIGH", "MEDIUM", "LOW"] as PriorityType[]).map(
                     (p) => ({
                       name: PRIORITY_STYLE[p].label,
@@ -230,7 +245,10 @@ export default function DashboardPage() {
                 />
               </Card>
               <Card title="Workload (open tickets per assignee)">
-                <BarList items={stats.workload} empty="No assigned tickets." />
+                <HBarChart
+                  items={stats.workload}
+                  empty="No assigned tickets."
+                />
               </Card>
             </div>
 
@@ -307,45 +325,78 @@ function StatCard({
   );
 }
 
-function BarList({
-  items,
-  empty,
-}: {
-  items: { name: string; count: number; color?: string }[];
-  empty: string;
-}) {
-  const max = Math.max(1, ...items.map((i) => i.count));
-  if (items.length === 0)
-    return (
-      <p className="text-[13px] py-4 text-center" style={{ color: "#9891A0" }}>
-        {empty}
-      </p>
-    );
+type ChartItem = { name: string; count: number; color?: string };
+
+function Empty({ text }: { text: string }) {
   return (
-    <div className="flex flex-col gap-3">
-      {items.map((i) => (
-        <div key={i.name}>
-          <div className="flex justify-between text-[12.5px] mb-1">
-            <span className="truncate" style={{ color: "#4A4351" }}>
-              {i.name}
-            </span>
-            <span style={{ color: "#746B7E" }}>{i.count}</span>
-          </div>
-          <div
-            className="h-2 rounded-full"
-            style={{ backgroundColor: "#F3EDF9" }}
-          >
-            <div
-              className="h-2 rounded-full"
-              style={{
-                width: `${(i.count / max) * 100}%`,
-                backgroundColor: i.color ?? "#613189",
-              }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
+    <p className="text-[13px] py-4 text-center" style={{ color: "#9891A0" }}>
+      {text}
+    </p>
+  );
+}
+
+// แท่งแนวนอน: category / department / workload
+function HBarChart({ items, empty }: { items: ChartItem[]; empty: string }) {
+  if (items.length === 0) return <Empty text={empty} />;
+  return (
+    <ResponsiveContainer width="100%" height={Math.max(160, items.length * 36)}>
+      <BarChart
+        data={items}
+        layout="vertical"
+        margin={{ left: 0, right: 16, top: 0, bottom: 0 }}
+      >
+        <CartesianGrid horizontal={false} stroke="#F0ECF4" />
+        <XAxis
+          type="number"
+          allowDecimals={false}
+          tick={{ fontSize: 12, fill: "#9891A0" }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          type="category"
+          dataKey="name"
+          width={110}
+          tick={{ fontSize: 12.5, fill: "#4A4351" }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <Tooltip cursor={{ fill: "#F3EDF9" }} />
+        <Bar
+          dataKey="count"
+          name="Tickets"
+          fill="#613189"
+          radius={[0, 4, 4, 0]}
+          barSize={14}
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// โดนัท: priority
+function DonutChart({ items, empty }: { items: ChartItem[]; empty: string }) {
+  const total = items.reduce((s, i) => s + i.count, 0);
+  if (total === 0) return <Empty text={empty} />;
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <PieChart>
+        <Pie
+          data={items}
+          dataKey="count"
+          nameKey="name"
+          innerRadius={50}
+          outerRadius={80}
+          paddingAngle={2}
+        >
+          {items.map((i) => (
+            <Cell key={i.name} fill={i.color ?? "#613189"} />
+          ))}
+        </Pie>
+        <Tooltip />
+        <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+      </PieChart>
+    </ResponsiveContainer>
   );
 }
 
